@@ -227,12 +227,14 @@
                     </execution>
                 </executions>
             </plugin>
+            <!--
             <plugin>
                 <groupId>com.roche.bfx.ctDNA</groupId>
                 <artifactId>maven-deb-packaging</artifactId>
                 <version>1.0.0</version>
                 <extensions>true</extensions>
             </plugin>
+            -->
             <plugin>
                 <artifactId>maven-clean-plugin</artifactId>
                 <version>3.0.0</version>
