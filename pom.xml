@@ -2,9 +2,43 @@
     <modelVersion>4.0.0</modelVersion>
     <groupId>com.heekim.dev</groupId>
     <artifactId>parent-pom</artifactId>
-    <version>1.0.0</version>
+    <version>1.0.1</version>
     <packaging>pom</packaging>
-    
+
+    <properties>
+        <maven.shade.plugin.log4j2.transformer.version>2.8.1</maven.shade.plugin.log4j2.transformer.version>
+
+        <skip.deb.src>true</skip.deb.src>
+        <skip.apt.repo>true</skip.apt.repo>
+        <skip.packaging>true</skip.packaging>
+        <skip.gen.env>${skip.packaging}</skip.gen.env>
+        <skip.java.test>false</skip.java.test>
+        <docker.skip>true</docker.skip>
+        <docker.skip.build>true</docker.skip.build>
+        <docker.skip.save>true</docker.skip.save>
+
+        <!-- Each child module overrides this -->
+        <debian.bin>${project.basedir}/target/bin</debian.bin>
+        <!-- -->
+        <!-- DOCKER PACKAGING -->
+        <docker.push.registry>kimh89.jfrog.io</docker.push.registry>
+        <docker.dev-base.name>${docker.push.registry}/${docker.prefix}/dev-base${prod.docker.suffix}:1.0.0</docker.dev-base.name>
+        <docker.verbose>true</docker.verbose>
+        <docker.prefix>default-docker-virtual</docker.prefix>
+        <!-- when docker.save.file is not extracted as a property the version is erroneously labeled as latest -->
+        <docker.save.file>${project.build.directory}/${project.artifactId}-${project.version}.tar.gz</docker.save.file>
+        <!-- -->
+        <!-- DEBIAN PACKAGING -->
+        <debian.repo>kimh89.jfrog.io</debian.repo>
+        <debian.repo.url>http://${debian.repo}/artifactory/default-debian/pool</debian.repo.url>
+        <debian.package.name>${project.artifactId}-${project.version}</debian.package.name>
+        <debian.result.file.name>${debian.package.name}.deb</debian.result.file.name>
+        <prod.docker.suffix>-deb</prod.docker.suffix>
+        <java.version>1.8</java.version>
+        <!-- DEBIAN PACKAGING -->
+        <javalib.repo.url>http://${debian.repo}/artifactory/default-maven-virtual</javalib.repo.url>
+    </properties>
+
     <distributionManagement>
         <repository>
             <id>central</id>
@@ -18,4 +52,191 @@
         </snapshotRepository>
     </distributionManagement>
 
+    <build>
+        <pluginManagement>
+            <plugins>
+                <plugin>
+                    <groupId>org.codehaus.gmavenplus</groupId>
+                    <artifactId>gmavenplus-plugin</artifactId>
+                    <version>1.5</version>
+                    <dependencies>
+                        <dependency>
+                            <groupId>org.codehaus.groovy</groupId>
+                            <artifactId>groovy-all</artifactId>
+                            <version>2.4.7</version>
+                        </dependency>
+                    </dependencies>
+                </plugin>
+                <plugin>
+                    <groupId>org.apache.maven.plugins</groupId>
+                    <artifactId>maven-surefire-plugin</artifactId>
+                    <version>2.20</version>
+                </plugin>
+            </plugins>
+        </pluginManagement>
+        <plugins>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-antrun-plugin</artifactId>
+                <version>1.8</version>
+                <executions>
+                    <execution>
+                        <id>create-target-directories</id>
+                        <phase>process-resources</phase>
+                        <goals>
+                            <goal>run</goal>
+                        </goals>
+                        <configuration>
+                            <target name="create directories">
+                                <mkdir dir="${project.build.directory}/bin" />
+                                <chmod dir="${project.build.directory}/bin" perm="a+rwx" />
+                                <mkdir dir="${project.build.directory}/checkout" />
+                                <chmod dir="${project.build.directory}/checkout" perm="a+rwx" />
+                                <mkdir dir="${project.build.directory}/dependency" />
+                                <chmod dir="${project.build.directory}/dependency" perm="a+rwx" />
+                                <delete dir="${project.build.directory}/test-classes"/>
+                            </target>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
+            <plugin>
+                <groupId>org.codehaus.gmavenplus</groupId>
+                <artifactId>gmavenplus-plugin</artifactId>
+                <executions>
+                    <execution>
+                        <id>clean-target</id>
+                        <phase>pre-clean</phase>
+                        <goals>
+                            <goal>execute</goal>
+                        </goals>
+                        <configuration>
+                            <properties><property>
+                                <name>docker_rm</name>
+                                <value>docker run --rm -i -v ${project.basedir}:/project ${docker.dev-base.name} rm -rf /project/target</value>
+                            </property><property>
+                                <name>skip_docker</name>
+                                <value>${docker.skip.build}</value>
+                            </property></properties>
+                            <scripts><script><![CDATA[
+                                if (!Boolean.valueOf(skip_docker)){
+                                    log.info("cleaning target directory through docker")
+                                    def process = docker_rm.execute()
+                                    process.waitFor()
+                                } else {
+                                    log.info("skip cleaning target directory with docker")
+                                    log.warn("if running on cluster, becuase of the root squashing on NFS, skipping this could leave files owned by root and can't be deleted by the user")
+                                }
+                            ]]></script></scripts>
+                        </configuration>
+                    </execution>
+                    <execution>
+                        <id>get-user-id-clean</id>
+                        <phase>pre-clean</phase>
+                        <goals>
+                            <goal>execute</goal>
+                        </goals>
+                        <configuration>
+                            <scripts><script><![CDATA[
+                               try {
+                                    log.info( 'finding current userid' );
+                                    def process = 'id -u'.execute()
+                                    process.waitFor()
+                                    project.properties.userid = process.in.text
+                                    log.info( "get-user-id-clean userid = "+project.properties.userid )
+                                    def process2 = 'id -g'.execute()
+                                    process2.waitFor()
+                                    project.properties.groupid= process2.in.text
+                                } catch (IOException) {
+                                    log.info( 'setting userid and groupid to 0 as program id not found' )
+                                    project.properties.userid = "0"
+                                    project.properties.groupid = "0"
+                                }
+                            ]]></script></scripts>
+                        </configuration>
+                    </execution>
+                    <execution>
+                        <id>set-skip-test</id>
+                        <phase>validate</phase>
+                        <goals>
+                            <goal>execute</goal>
+                        </goals>
+                        <configuration>
+                            <properties>
+                                <property><name>mavenTestSkip</name><value>${maven.test.skip}</value></property>
+                            </properties>
+                            <scripts><script><![CDATA[
+                                log.info( "skip.java.test = " + project.properties["skip.java.test"] )
+                                skip = Boolean.valueOf(project.properties["skip.java.test"]) | Boolean.valueOf(mavenTestSkip)
+                                log.info( "java test in ctdna-parent-pom will " + (skip?"":"not ") + "be skipped." )
+				project.properties["skip.java.test.internal"] = skip.toString()
+                            ]]></script></scripts>
+                        </configuration>
+                    </execution>
+                    <execution>
+                        <id>get-user-id</id>
+                        <phase>validate</phase>
+                        <goals>
+                            <goal>execute</goal>
+                        </goals>
+                        <configuration>
+                            <scripts><script><![CDATA[
+                                try {
+                                    log.info( 'finding current userid' );
+                                    def process = 'id -u'.execute()
+                                    process.waitFor()
+                                    project.properties.userid = process.in.text
+                                    log.info( "get-user-id userid = "+project.properties.userid )
+                                    def process2 = 'id -g'.execute()
+                                    process2.waitFor()
+                                    project.properties.groupid = process2.in.text
+                                } catch (IOException) {
+                                    log.info( 'setting userid and groupid to 0 as program id not found' )
+                                    project.properties.userid = "0"
+                                    project.properties.groupid = "0"
+                                }
+                            ]]></script></scripts>
+                        </configuration>
+                    </execution>
+                    <execution>
+                        <id>find-dependenices-list</id>
+                        <phase>validate</phase>
+                        <goals>
+                            <goal>execute</goal>
+                        </goals>
+                        <configuration>
+                            <properties>
+                                <property><name>skip_docker</name><value>${docker.skip.build}</value></property>
+                                <property><name>base_dir</name><value>${project.basedir}</value></property>
+                            </properties>
+                            <scripts><script><![CDATA[
+                                if (!Boolean.valueOf(skip_docker)){
+                                    log.info( 'finding dependencies list of the project.  it is used in some Dockerfile.gsp and most control.gsp' );
+                                    def mvnCommand = "mvn -f "+base_dir+"/pom.xml dependency:list"
+                                    log.info( "mvn command is "+mvnCommand)
+                                    def process = mvnCommand.execute() | ['awk', '-F', ':', '/^\\[INFO\\].*:deb:.*compile$/ {print tolower($2)"-"$4}'].execute() | 'paste -sd , -'.execute()
+                                    process.waitFor()
+                                    project.properties.mvn_dependencies = process.in.text.trim()
+                                    log.info( 'dependencies found: ' + project.properties.mvn_dependencies )
+                                } else {
+                                    log.info( 'skip finding dependencies list of the project' )
+                                    log.warn( 'building debian package will mostly failed and some docker image too' )
+                                }
+                            ]]></script></scripts>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
+            <plugin>
+                <groupId>com.roche.bfx.ctDNA</groupId>
+                <artifactId>maven-deb-packaging</artifactId>
+                <version>1.0.0</version>
+                <extensions>true</extensions>
+            </plugin>
+            <plugin>
+                <artifactId>maven-clean-plugin</artifactId>
+                <version>3.0.0</version>
+            </plugin>
+        </plugins>
+    </build>
 </project>
