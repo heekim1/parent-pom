@@ -125,7 +125,7 @@
                                     process.waitFor()
                                 } else {
                                     log.info("skip cleaning target directory with docker")
-                                    log.warn("if running on cluster, becuase of the root squashing on NFS, skipping this could leave files owned by root and can't be deleted by the user")
+                                    log.warn("if running on cluster, because of the root squashing on NFS, skipping this could leave files owned by root and can't be deleted by the user")
                                 }
                             ]]></script></scripts>
                         </configuration>
@@ -227,18 +227,600 @@
                     </execution>
                 </executions>
             </plugin>
-            <!--
-            <plugin>
-                <groupId>com.roche.bfx.ctDNA</groupId>
-                <artifactId>maven-deb-packaging</artifactId>
-                <version>1.0.0</version>
-                <extensions>true</extensions>
-            </plugin>
-            -->
             <plugin>
                 <artifactId>maven-clean-plugin</artifactId>
                 <version>3.0.0</version>
             </plugin>
         </plugins>
     </build>
+
+    <profiles>
+        <profile>
+            <id>prod</id>
+            <activation>
+                <activeByDefault>false</activeByDefault>
+                <property>
+                    <name>prod</name>
+                </property>
+            </activation>
+            <properties>
+                <docker.suffix>${prod.docker.suffix}</docker.suffix>
+                <docker.skip.build>false</docker.skip.build>
+                <docker.skip>false</docker.skip>
+                <skip.packaging>false</skip.packaging>
+                <skip.apt.repo>false</skip.apt.repo>
+                <skip.deb.src>false</skip.deb.src>
+            </properties>
+        </profile>
+
+        <profile>
+            <id>pack</id>
+            <activation>
+                <activeByDefault>false</activeByDefault>
+                <property>
+                    <name>pack</name>
+                </property>
+            </activation>
+            <properties>
+                <docker.skip.build>false</docker.skip.build>
+                <docker.skip>false</docker.skip>
+                <skip.packaging>false</skip.packaging>
+                <skip.apt.repo>false</skip.apt.repo>
+                <docker.suffix>-${user.name}</docker.suffix>
+            </properties>
+        </profile>
+
+        <profile>
+            <id>deb</id>
+            <activation>
+                <activeByDefault>false</activeByDefault>
+                <file>
+                    <exists>build/debian/control.gsp</exists>
+                </file>
+            </activation>
+            <build>
+                <plugins>
+                    <plugin>
+                        <!-- Produce a new groovy control file from with the envinroment variables filled in -->
+                        <groupId>com.summitsystemsinc.maven</groupId>
+                        <artifactId>groovy-template-maven-plugin</artifactId>
+                        <version>1.0.0</version>
+                        <executions>
+                            <execution>
+                                <id>gen-deb-control</id>
+                                <phase>generate-sources</phase>
+                                <goals>
+                                    <goal>generate</goal>
+                                </goals>
+                                <configuration>
+                                    <properties>
+                                        <version>${project.version}</version>
+                                        <name>${project.artifactId}</name>
+                                        <dependencies>${mvn_dependencies}</dependencies>
+                                    </properties>
+                                    <groovyTemplateSources>${project.basedir}/build/debian/</groovyTemplateSources>
+                                    <resourcesOutputDirectory>${project.build.directory}/debian/DEBIAN</resourcesOutputDirectory>
+                                </configuration>
+                            </execution>
+                        </executions>
+                    </plugin>
+                    <plugin>
+                        <groupId>org.apache.maven.plugins</groupId>
+                        <artifactId>maven-antrun-plugin</artifactId>
+                        <version>1.7</version>
+                        <executions>
+                            <execution>
+                                <id>fix-deb-permission</id>
+                                <phase>compile</phase>
+                                <goals>
+                                    <goal>run</goal>
+                                </goals>
+                                <configuration>
+                                    <target name="change permission for debian postinst">
+                                        <chmod perm="a+x">
+                                            <fileset dir="${project.build.directory}/debian/DEBIAN">
+                                                <exclude name="control" />
+                                            </fileset>
+                                        </chmod>
+                                    </target>
+                                </configuration>
+                            </execution>
+                        </executions>
+                    </plugin>
+                    <plugin>
+                        <groupId>org.codehaus.mojo</groupId>
+                        <artifactId>exec-maven-plugin</artifactId>
+                        <version>1.5.0</version>
+                        <executions>
+                            <execution>
+                                <id>build-deb</id>
+                                <phase>generate-test-sources</phase>
+                                <goals>
+                                    <goal>exec</goal>
+                                </goals>
+                                <configuration>
+                                    <skip>${skip.packaging}</skip>
+                                    <workingDirectory>${project.basedir}</workingDirectory>
+                                    <executable>docker</executable>
+                                    <arguments>
+                                        <argument>run</argument>
+                                        <argument>--rm</argument>
+                                        <argument>-i</argument>
+                                        <argument>--user</argument>
+                                        <argument>${userid}</argument>
+                                        <argument>-v</argument>
+                                        <argument>${debian.bin}:/deb/bfx/bin/${project.name}/${project.version}</argument>
+                                        <argument>-v</argument>
+                                        <argument>${project.build.directory}/debian/DEBIAN:/deb/DEBIAN</argument>
+                                        <argument>-v</argument>
+                                        <argument>${project.build.directory}:/out</argument>
+                                        <argument>${docker.dev-base.name}</argument>
+                                        <argument>dpkg</argument>
+                                        <argument>--build</argument>
+                                        <argument>/deb</argument>
+                                        <argument>/out/${debian.result.file.name}</argument>
+                                    </arguments>
+                                </configuration>
+                            </execution>
+                        </executions>
+                    </plugin>
+                    <plugin>
+                        <groupId>org.codehaus.gmavenplus</groupId>
+                        <artifactId>gmavenplus-plugin</artifactId>
+                        <executions>
+                            <execution>
+                                <id>set-main-artifact</id>
+                                <phase>prepare-package</phase>
+                                <goals>
+                                    <goal>execute</goal>
+                                </goals>
+                                <configuration>
+                                    <properties>
+                                        <property><name>docker_skip</name><value>${docker.skip.build}</value></property>
+                                        <property><name>build_dir</name><value>${project.build.directory}</value></property>
+                                    </properties>
+                                    <scripts><script><![CDATA[
+                                            if (!Boolean.valueOf(docker_skip)){
+                                                project.artifact.setFile(new File(build_dir+"/${debian.result.file.name}"))
+                                                log.info("adding main artifact " + build_dir + "/${debian.result.file.name}" )
+                                            } else {
+                                                log.info("skip set-main-artifact because docker skip build is set to true.")
+                                            }
+                                        ]]></script></scripts>
+                                </configuration>
+                            </execution>
+                            <execution>
+                                <id>deploy-debian-artifactory</id>
+                                <phase>deploy</phase>
+                                <goals>
+                                    <goal>execute</goal>
+                                </goals>
+                                <configuration>
+                                    <properties>
+                                        <property><name>debian_repo</name><value>${debian.repo}</value></property>
+                                        <property><name>debian_repo_url</name><value>${debian.repo.url}</value></property>
+                                        <property><name>debian_package_name</name><value>${debian.package.name}</value></property>
+                                        <property><name>debian_result_file_name</name><value>${debian.result.file.name}</value></property>
+                                        <property><name>build_dir</name><value>${project.build.directory}</value></property>
+                                    </properties>
+                                    <scripts><script><![CDATA[
+                                            def servers = session.settings.getServers()
+                                            def server = servers.find { it.getId().equals( debian_repo ) }
+                                            if( server == null ) {
+                                                print "cannot find server section for $debian_repo in current user's settings.xml"
+                                                throw new RuntimeException("missing server settings")
+                                            }
+                                            def cred = "-u${server.getUsername()}:${server.getPassword()}"
+                                            //def command = [ 'curl',  "-u(masked username):(masked password)", '-XPUT', "${debian_repo_url}/private/${debian_package_name.take(1)}/${debian_result_file_name};deb.distribution=jessie;deb.distribution=stretch;deb.distribution=bionic;deb.distribution=focal;deb.component=private;deb.architecture=all", '-T', "${build_dir}/${debian_result_file_name}" ]
+                                            def command = [ 'curl',  "-uadmin:AP2KDxgobgR8JZb8s4ZiGwXava4", '-XPUT', "${debian_repo_url}/artifactory/default-debian/pool/${debian_package_name.take(1)}/${debian_result_file_name};deb.distribution=jessie;deb.distribution=stretch;deb.distribution=bionic;deb.distribution=focal;deb.component=private;deb.architecture=all", '-T', "${build_dir}/${debian_result_file_name}" ]
+                                            log.info( command.join(' ') )
+                                            command[1] = cred
+                                            def process = command.execute()
+                                            def returnCode = process.waitFor()
+                                            log.info( "return code " + returnCode )
+                                            log.info( process.in.text )
+                                            if( returnCode != 0 ) throw new RuntimeException("failed publishing to artifactory")
+                                        ]]></script></scripts>
+                                </configuration>
+                            </execution>
+                        </executions>
+                    </plugin>
+                </plugins>
+            </build>
+        </profile>
+
+        <profile>
+            <id>docker</id>
+            <activation>
+                <activeByDefault>false</activeByDefault>
+                <file>
+                    <exists>build/docker/Dockerfile.gsp</exists>
+                </file>
+            </activation>
+            <build>
+                <plugins>
+                    <!-- deb files are pulled in through maven dependency -->
+                    <plugin>
+                        <artifactId>maven-dependency-plugin</artifactId>
+                        <version>3.0.0</version>
+                        <executions>
+                            <execution>
+                                <id>copy-dependencies</id>
+                                <phase>prepare-package</phase>
+                                <goals>
+                                    <goal>copy-dependencies</goal>
+                                </goals>
+                                <configuration>
+                                    <includeTypes>deb</includeTypes>
+                                </configuration>
+                            </execution>
+                        </executions>
+                    </plugin>
+                    <!-- copy itself to the dependency directory with other deb -->
+                    <plugin>
+                        <groupId>org.apache.maven.plugins</groupId>
+                        <artifactId>maven-antrun-plugin</artifactId>
+                        <version>1.8</version>
+                        <executions>
+                            <execution>
+                                <id>copy-itself-dependency</id>
+                                <phase>prepare-package</phase>
+                                <goals>
+                                    <goal>run</goal>
+                                </goals>
+                                <configuration>
+                                    <target>
+                                        <copy file="${project.build.directory}/${debian.result.file.name}" tofile="${project.build.directory}/dependency/${debian.result.file.name}" failonerror="false" />
+                                    </target>
+                                </configuration>
+                            </execution>
+                        </executions>
+                    </plugin>
+                    <plugin>
+                        <groupId>org.codehaus.mojo</groupId>
+                        <artifactId>exec-maven-plugin</artifactId>
+                        <version>1.5.0</version>
+                        <executions>
+                            <execution>
+                                <id>generate-env</id>
+                                <phase>prepare-package</phase>
+                                <goals>
+                                    <goal>exec</goal>
+                                </goals>
+                                <configuration>
+                                    <skip>${skip.gen.env}</skip>
+                                    <workingDirectory>${project.basedir}</workingDirectory>
+                                    <executable>docker</executable>
+                                    <arguments>
+                                        <argument>run</argument>
+                                        <argument>--rm</argument>
+                                        <argument>-i</argument>
+                                        <argument>--user</argument>
+                                        <argument>${userid}</argument>
+                                        <argument>-v</argument>
+                                        <argument>${project.build.directory}/dependency:/in</argument>
+                                        <argument>-v</argument>
+                                        <argument>${project.build.directory}:/out</argument>
+                                        <argument>${docker.dev-base.name}</argument>
+                                        <argument>/root/gen-env.sh</argument>
+                                        <argument>${project.artifactId}-${project.version}.env</argument>
+                                    </arguments>
+                                </configuration>
+                            </execution>
+                            <execution>
+                                <id>apt-repo</id>
+                                <phase>package</phase>
+                                <goals>
+                                    <goal>exec</goal>
+                                </goals>
+                                <configuration>
+                                    <skip>${skip.apt.repo}</skip>
+                                    <workingDirectory>${project.basedir}</workingDirectory>
+                                    <executable>docker</executable>
+                                    <arguments>
+                                        <argument>run</argument>
+                                        <argument>--rm</argument>
+                                        <argument>-i</argument>
+                                        <argument>--user</argument>
+                                        <argument>${userid}</argument>
+                                        <argument>-v</argument>
+                                        <argument>${project.build.directory}/dependency:/in</argument>
+                                        <argument>-v</argument>
+                                        <argument>${project.build.directory}/dependency:/out</argument>
+                                        <argument>${docker.dev-base.name}</argument>
+                                        <argument>/root/deb-repo.sh</argument>
+                                    </arguments>
+                                </configuration>
+                            </execution>
+                        </executions>
+                    </plugin>
+                    <plugin>
+                        <groupId>org.codehaus.mojo</groupId>
+                        <artifactId>build-helper-maven-plugin</artifactId>
+                        <version>3.0.0</version>
+                        <executions>
+                            <execution>
+                                <id>attach-env</id>
+                                <phase>package</phase>
+                                <goals>
+                                    <goal>attach-artifact</goal>
+                                </goals>
+                                <configuration>
+                                    <skipAttach>${skip.gen.env}</skipAttach>
+                                    <artifacts>
+                                        <artifact>
+                                            <file>${project.build.directory}/${project.artifactId}-${project.version}.env</file>
+                                            <type>text</type>
+                                            <classifier>env</classifier>
+                                        </artifact>
+                                    </artifacts>
+                                </configuration>
+                            </execution>
+                            <execution>
+                                <id>attach-docker-image</id>
+                                <phase>package</phase>
+                                <goals>
+                                    <goal>attach-artifact</goal>
+                                </goals>
+                                <configuration>
+                                    <skipAttach>${docker.skip.save}</skipAttach>
+                                    <artifacts>
+                                        <artifact>
+                                            <file>${docker.save.file}</file>
+                                            <type>tar.gz</type>
+                                        </artifact>
+                                    </artifacts>
+                                </configuration>
+                            </execution>
+                        </executions>
+                    </plugin>
+                    <!-- build docker file -->
+                    <plugin>
+                        <groupId>com.summitsystemsinc.maven</groupId>
+                        <artifactId>groovy-template-maven-plugin</artifactId>
+                        <version>1.0.0</version>
+                        <executions>
+                            <execution>
+                                <id>gen-dockerfile</id>
+                                <phase>prepare-package</phase>
+                                <goals>
+                                    <goal>generate</goal>
+                                </goals>
+                                <configuration>
+                                    <properties>
+                                        <version>${project.version}</version>
+                                        <name>${project.artifactId}</name>
+                                        <prefix>${docker.push.registry}/${docker.prefix}</prefix>
+                                        <suffix>${prod.docker.suffix}</suffix>
+                                        <dependencies>${mvn_dependencies}</dependencies>
+                                    </properties>
+                                    <groovyTemplateSources>${project.basedir}/build/docker</groovyTemplateSources>
+                                    <resourcesOutputDirectory>${project.build.directory}/dependency</resourcesOutputDirectory>
+                                </configuration>
+                            </execution>
+                        </executions>
+                    </plugin>
+                    <plugin>
+                        <groupId>io.fabric8</groupId>
+                        <artifactId>docker-maven-plugin</artifactId>
+                        <version>0.20.1</version>
+                        <configuration>
+                            <images>
+                                <image>
+                                    <name>${docker.prefix}/%a${docker.suffix}</name>
+                                    <build>
+                                        <dockerFileDir>${project.build.directory}/dependency</dockerFileDir>
+                                        <tags>${project.version}</tags>
+                                    </build>
+                                </image>
+                            </images>
+                        </configuration>
+                        <executions>
+                            <execution>
+                                <id>build-docker-image</id>
+                                <phase>package</phase>
+                                <goals>
+                                    <goal>build</goal>
+                                    <goal>save</goal>
+                                </goals>
+                            </execution>
+                        </executions>
+                    </plugin>
+                    <plugin>
+                        <groupId>org.codehaus.gmavenplus</groupId>
+                        <artifactId>gmavenplus-plugin</artifactId>
+                        <executions>
+                            <execution>
+                                <id>deploy-docker</id>
+                                <phase>deploy</phase>
+                                <goals>
+                                    <goal>execute</goal>
+                                </goals>
+                            </execution>
+                        </executions>
+                        <configuration>
+                            <properties>
+                                <property>
+                                    <name>dockerRegistry</name>
+                                    <value>${docker.push.registry}</value>
+                                </property>
+                                <property>
+                                    <name>remoteImageNameOrig</name>
+                                    <value>${docker.push.registry}/${docker.prefix}/${project.artifactId}${docker.suffix}:${project.version}</value>
+                                </property>
+                                <property>
+                                    <name>localImageNameOrig</name>
+                                    <value>${docker.prefix}/${project.artifactId}${docker.suffix}:${project.version}</value>
+                                </property>
+                            </properties>
+                            <scripts>
+                                <script><![CDATA[
+                                def localImageName = localImageNameOrig.toLowerCase()
+                                def remoteImageName = remoteImageNameOrig.toLowerCase()
+                                def untagCmd = "docker rmi $remoteImageName"
+                                def tagCmd = "docker tag $localImageName $remoteImageName"
+                                def pushCmd = "docker push $remoteImageName"
+                                def servers = session.settings.getServers()
+                                def server = servers.find { it.getId().equals( dockerRegistry ) }
+                                if( server == null ) {
+                                    print "server section for $dockerRegistry not found on current user's settings.xml"
+                                    throw new RuntimeException("missing server settings")
+                                }
+                                def loginCmd = "docker login $dockerRegistry --username=${server.getUsername()} --password=${server.getPassword()}"
+                                def process0 = loginCmd.execute()
+                                process0.waitFor()
+                                log.info( "docker login " + dockerRegistry + "\n" + process0.in.text )
+                                def process1 = untagCmd.execute()
+                                process1.waitFor()
+                                log.info( untagCmd + "\n" + process1.in.text )
+                                def process2 = tagCmd.execute()
+                                process2.waitFor()
+                                log.info( tagCmd + "\n" + process2.in.text )
+                                def process3 = pushCmd.execute()
+                                process3.waitFor()
+                                log.info( pushCmd + "\n" + process3.in.text + "\n" + process3.err.text  )
+                                def process4 = untagCmd.execute()
+                                process4.waitFor()
+                                log.info( untagCmd + "\n" + process4.in.text )
+                            ]]></script>
+                            </scripts>
+                        </configuration>
+                    </plugin>
+                </plugins>
+            </build>
+        </profile>
+
+        <profile>
+            <id>test</id>
+            <activation>
+                <activeByDefault>false</activeByDefault>
+                <file>
+                    <exists>build/test-docker/Dockerfile.gsp</exists>
+                </file>
+            </activation>
+            <build>
+                <plugins>
+                    <!-- deb files (test scoped) are pulled in through maven dependency -->
+                    <plugin>
+                        <artifactId>maven-dependency-plugin</artifactId>
+                        <version>3.0.0</version>
+                        <executions>
+                            <execution>
+                                <id>copy-dependencies</id>
+                                <phase>pre-integration-test</phase>
+                                <goals>
+                                    <goal>copy-dependencies</goal>
+                                </goals>
+                                <configuration>
+                                    <outputDirectory>${project.build.directory}/test-deps</outputDirectory>
+                                    <excludeScope>compile</excludeScope>
+                                </configuration>
+                            </execution>
+                        </executions>
+                    </plugin>
+                    <!-- copy itself to the test dependency directory with other deb -->
+                    <plugin>
+                        <groupId>org.apache.maven.plugins</groupId>
+                        <artifactId>maven-antrun-plugin</artifactId>
+                        <version>1.8</version>
+                        <executions>
+                            <execution>
+                                <phase>pre-integration-test</phase>
+                                <id>copy-test-dependency</id>
+                                <goals>
+                                    <goal>run</goal>
+                                </goals>
+                                <configuration>
+                                    <tasks>
+                                        <copy file="${project.build.directory}/${debian.result.file.name}" tofile="${project.build.directory}/test-deps/${debian.result.file.name}" failonerror="false" />
+                                    </tasks>
+                                </configuration>
+                            </execution>
+                        </executions>
+                    </plugin>
+                    <plugin>
+                        <groupId>org.codehaus.mojo</groupId>
+                        <artifactId>exec-maven-plugin</artifactId>
+                        <version>1.5.0</version>
+                        <executions>
+                            <execution>
+                                <id>apt-repo-test</id>
+                                <phase>pre-integration-test</phase>
+                                <goals>
+                                    <goal>exec</goal>
+                                </goals>
+                                <configuration>
+                                    <skip>false</skip>
+                                    <workingDirectory>${project.basedir}</workingDirectory>
+                                    <executable>docker</executable>
+                                    <arguments>
+                                        <argument>run</argument>
+                                        <argument>--rm</argument>
+                                        <argument>-i</argument>
+                                        <argument>--user</argument>
+                                        <argument>${userid}</argument>
+                                        <argument>-v</argument>
+                                        <argument>${project.build.directory}/test-deps:/in</argument>
+                                        <argument>-v</argument>
+                                        <argument>${project.build.directory}/test-deps:/out</argument>
+                                        <argument>${docker.dev-base.name}</argument>
+                                        <argument>/root/deb-repo.sh</argument>
+                                    </arguments>
+                                </configuration>
+                            </execution>
+                        </executions>
+                    </plugin>
+                    <plugin>
+                        <groupId>com.summitsystemsinc.maven</groupId>
+                        <artifactId>groovy-template-maven-plugin</artifactId>
+                        <version>1.0.0</version>
+                        <executions>
+                            <execution>
+                                <id>gen-test-dockerfile</id>
+                                <phase>generate-sources</phase>
+                                <goals>
+                                    <goal>generate</goal>
+                                </goals>
+                                <configuration>
+                                    <properties>
+                                        <version>${project.version}</version>
+                                        <name>${project.artifactId}</name>
+                                        <prefix>${docker.prefix}</prefix>
+                                        <suffix>${prod.docker.suffix}</suffix>
+                                    </properties>
+                                    <groovyTemplateSources>${project.basedir}/test/docker</groovyTemplateSources>
+                                    <resourcesOutputDirectory>${project.build.directory}/test-deps</resourcesOutputDirectory>
+                                </configuration>
+                            </execution>
+                        </executions>
+                    </plugin>
+                    <plugin>
+                        <groupId>io.fabric8</groupId>
+                        <artifactId>docker-maven-plugin</artifactId>
+                        <version>0.20.1</version>
+                        <executions>
+                            <execution>
+                                <id>build-test-docker-image</id>
+                                <phase>integration-test</phase>
+                                <goals>
+                                    <goal>build</goal>
+                                </goals>
+                                <configuration>
+                                    <images>
+                                        <image>
+                                            <name>${docker.prefix}/test/%a${docker.suffix}</name>
+                                            <build>
+                                                <dockerFile>${project.build.directory}/test-deps/Dockerfile</dockerFile>
+                                                <tags>${project.version}</tags>
+                                            </build>
+                                        </image>
+                                    </images>
+                                </configuration>
+                            </execution>
+                        </executions>
+                    </plugin>
+                </plugins>
+            </build>
+        </profile>
+    </profiles>
 </project>
