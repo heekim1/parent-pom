@@ -48,14 +48,46 @@ require wget, mvn 3.5+, java, docker 1.12.6+, paste, awk, curl
 1. Add a ```mirror``` section to ```.m2/settings.xml```
 
    ```xml
-   <mirrors>
-     <mirror>
-       <id>bina-local</id>
-       <name>Bina Local</name>
-       <url>http://10.27.4.2:8081/nexus/content/groups/public</url>
-       <mirrorOf>external:*,central,bina-aws,glassfish-repository,!repository-roche-releases</mirrorOf>
-     </mirror>
-   </mirrors>
+<profiles>
+    <profile>
+      <repositories>
+        <repository>
+          <snapshots>
+            <enabled>false</enabled>
+          </snapshots>
+          <id>central</id>
+          <name>default-maven-virtual</name>
+          <url>https://kimh89.jfrog.io/artifactory/default-maven-virtual</url>
+        </repository>
+        <repository>
+          <snapshots />
+          <id>snapshots</id>
+          <name>default-maven-virtual</name>
+          <url>https://kimh89.jfrog.io/artifactory/default-maven-virtual</url>
+        </repository>
+      </repositories>
+      <pluginRepositories>
+        <pluginRepository>
+          <snapshots>
+            <enabled>false</enabled>
+          </snapshots>
+          <id>central</id>
+          <name>default-maven-virtual</name>
+          <url>https://kimh89.jfrog.io/artifactory/default-maven-virtual</url>
+        </pluginRepository>
+        <pluginRepository>
+          <snapshots />
+          <id>snapshots</id>
+          <name>default-maven-virtual</name>
+          <url>https://kimh89.jfrog.io/artifactory/default-maven-virtual</url>
+        </pluginRepository>
+      </pluginRepositories>
+      <id>artifactory</id>
+    </profile>
+  </profiles>
+  <activeProfiles>
+    <activeProfile>artifactory</activeProfile>
+  </activeProfiles>
    ```
 2. Run ```mvn install```.
 
@@ -77,12 +109,12 @@ require wget, mvn 3.5+, java, docker 1.12.6+, paste, awk, curl
    ```xml
    <servers>
      <server>
-       <id>rssregistry.roche.com:5001</id>
+       <id>kimh89.jfrog.io</id>
        <username>bfxonco</username>
        <password>----</password>
      </server>
      <server>
-       <id>rssregistry.roche.com:8081</id>
+       <id>kimh89.jfrog.io</id>
        <username>bfxonco</username>
        <password>----</password>
      </server>
@@ -148,7 +180,7 @@ Since the Debian packages are not installed in common locations like ```/usr/bin
 
    ```xml
    <dependency>
-     <groupId>com.roche.bfx.ctDNA</groupId>
+     <groupId>com.kimh89.dev</groupId>
      <artifactId>ctdna-fusion</artifactId>
      <version>1.0.0</version>
      <type>text</type>
@@ -161,12 +193,6 @@ Since the Debian packages are not installed in common locations like ```/usr/bin
   1. branch out one of the tools so it depends on the same version of R (ref Handling multiple builds of the same version); OR
   2. only put the language dependency (like R, java) on the top level ctdna-* projects.
 
-
-# Handling versions
-
-Each git repo has it own version, following the version of the tools itself.  e.g. [Picard (Bfx)](http://ghe-rss.roche.com/SW-package-management/picard) is building the 2.9.0 version of Picard, thus, it's version is also 2.9.0.  Please make sure the version in the ```pom.xml``` matches those in ```src/deb/DEBIAN/control.gsp``` & ```src/src-deb/DEBIAN/control.gsp```.
-
-When multiple versions of the tool is needed (possibly by various workflow, e.g. ctDNAv1 & ctDNAv2 requires different version of Picard, create a ```Release``` and ```Tag``` for the corresponding code on github enterprise.  If changes are needed after a release, and ```master``` branch already moved on to a different version, branch out from the tag, delete release & tag and recreate release & tag from the new branch.
 
 
 # Handling multiple builds of the same version
