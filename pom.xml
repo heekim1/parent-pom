@@ -666,7 +666,8 @@
                                     print "server section for $dockerRegistry not found on current user's settings.xml"
                                     throw new RuntimeException("missing server settings")
                                 }
-                                def loginCmd = "docker login $dockerRegistry --username=${server.getUsername()} --password=${server.getPassword()}"
+                                //def loginCmd = "docker login $dockerRegistry --username=${server.getUsername()} --password=${server.getPassword()}"
+                                def loginCmd = "docker login $dockerRegistry"
                                 def process0 = loginCmd.execute()
                                 process0.waitFor()
                                 log.info( "docker login " + dockerRegistry + "\n" + process0.in.text )
