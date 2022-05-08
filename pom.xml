@@ -2,7 +2,7 @@
     <modelVersion>4.0.0</modelVersion>
     <groupId>com.heekim.dev</groupId>
     <artifactId>parent-pom</artifactId>
-    <version>1.0.4</version>
+    <version>1.1.0</version>
     <packaging>pom</packaging>
 
     <properties>
@@ -22,7 +22,7 @@
         <!-- -->
         <!-- DOCKER PACKAGING -->
         <docker.push.registry>kimh89.jfrog.io</docker.push.registry>
-        <docker.dev-base.name>${docker.push.registry}/${docker.prefix}/dev-base${prod.docker.suffix}:1.0.7</docker.dev-base.name>
+        <docker.dev-base.name>${docker.push.registry}/${docker.prefix}/dev-base${prod.docker.suffix}:1.1.0</docker.dev-base.name>
         <docker.verbose>true</docker.verbose>
         <docker.prefix>default-docker-virtual</docker.prefix>
         <!-- when docker.save.file is not extracted as a property the version is erroneously labeled as latest -->
@@ -30,13 +30,13 @@
         <!-- -->
         <!-- DEBIAN PACKAGING -->
         <debian.repo>kimh89.jfrog.io</debian.repo>
-        <debian.repo.url>http://${debian.repo}/artifactory/default-debian/pool</debian.repo.url>
+        <debian.repo.url>https://${debian.repo}/artifactory/default-debian/pool</debian.repo.url>
         <debian.package.name>${project.artifactId}-${project.version}</debian.package.name>
         <debian.result.file.name>${debian.package.name}.deb</debian.result.file.name>
         <prod.docker.suffix>-deb</prod.docker.suffix>
         <java.version>1.8</java.version>
         <!-- DEBIAN PACKAGING -->
-        <javalib.repo.url>http://${debian.repo}/artifactory/default-maven-virtual</javalib.repo.url>
+        <javalib.repo.url>https://${debian.repo}/artifactory/default-maven-virtual</javalib.repo.url>
     </properties>
 
     <distributionManagement>
