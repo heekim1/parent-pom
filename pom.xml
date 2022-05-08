@@ -2,7 +2,7 @@
     <modelVersion>4.0.0</modelVersion>
     <groupId>com.heekim.dev</groupId>
     <artifactId>parent-pom</artifactId>
-    <version>1.0.2</version>
+    <version>1.0.3</version>
     <packaging>pom</packaging>
 
     <properties>
@@ -404,17 +404,11 @@
                                         <property><name>build_dir</name><value>${project.build.directory}</value></property>
                                     </properties>
                                     <scripts><script><![CDATA[
-                                            def servers = session.settings.getServers()
-                                            def server = servers.find { it.getId().equals( debian_repo ) }
-                                            if( server == null ) {
-                                                print "cannot find server section for $debian_repo in current user's settings.xml"
-                                                throw new RuntimeException("missing server settings")
-                                            }
-                                            def cred = "-u${server.getUsername()}:${server.getPassword()}"
+					    //def cred = "-u${server.getUsername()}:${server.getPassword()}"
                                             //def command = [ 'curl',  "-u(masked username):(masked password)", '-XPUT', "${debian_repo_url}/private/${debian_package_name.take(1)}/${debian_result_file_name};deb.distribution=jessie;deb.distribution=stretch;deb.distribution=bionic;deb.distribution=focal;deb.component=private;deb.architecture=all", '-T', "${build_dir}/${debian_result_file_name}" ]
-                                            def command = [ 'curl',  "-uadmin:AP2KDxgobgR8JZb8s4ZiGwXava4", '-XPUT', "${debian_repo_url}/artifactory/default-debian/pool/${debian_package_name.take(1)}/${debian_result_file_name};deb.distribution=jessie;deb.distribution=stretch;deb.distribution=bionic;deb.distribution=focal;deb.component=private;deb.architecture=all", '-T', "${build_dir}/${debian_result_file_name}" ]
+                                            def command = [ 'curl',  "-uadmin:AP2KDxgobgR8JZb8s4ZiGwXava4", '-XPUT', "${debian_repo_url}/${debian_result_file_name};deb.distribution=jessie;deb.component=private;deb.architecture=all", '-T', "${build_dir}/${debian_result_file_name}" ]
                                             log.info( command.join(' ') )
-                                            command[1] = cred
+					    //command[1] = cred
                                             def process = command.execute()
                                             def returnCode = process.waitFor()
                                             log.info( "return code " + returnCode )
@@ -660,12 +654,12 @@
                                 def untagCmd = "docker rmi $remoteImageName"
                                 def tagCmd = "docker tag $localImageName $remoteImageName"
                                 def pushCmd = "docker push $remoteImageName"
-                                def servers = session.settings.getServers()
-                                def server = servers.find { it.getId().equals( dockerRegistry ) }
-                                if( server == null ) {
-                                    print "server section for $dockerRegistry not found on current user's settings.xml"
-                                    throw new RuntimeException("missing server settings")
-                                }
+					//def servers = session.settings.getServers()
+					//def server = servers.find { it.getId().equals( dockerRegistry ) }
+					//if( server == null ) {
+					//print "server section for $dockerRegistry not found on current user's settings.xml"
+					//throw new RuntimeException("missing server settings")
+					//}
                                 //def loginCmd = "docker login $dockerRegistry --username=${server.getUsername()} --password=${server.getPassword()}"
                                 def loginCmd = "docker login $dockerRegistry"
                                 def process0 = loginCmd.execute()
