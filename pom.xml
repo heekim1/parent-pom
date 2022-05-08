@@ -2,7 +2,7 @@
     <modelVersion>4.0.0</modelVersion>
     <groupId>com.heekim.dev</groupId>
     <artifactId>parent-pom</artifactId>
-    <version>1.0.3</version>
+    <version>1.0.4</version>
     <packaging>pom</packaging>
 
     <properties>
@@ -22,7 +22,7 @@
         <!-- -->
         <!-- DOCKER PACKAGING -->
         <docker.push.registry>kimh89.jfrog.io</docker.push.registry>
-        <docker.dev-base.name>${docker.push.registry}/${docker.prefix}/dev-base${prod.docker.suffix}:1.0.0</docker.dev-base.name>
+        <docker.dev-base.name>${docker.push.registry}/${docker.prefix}/dev-base${prod.docker.suffix}:1.0.7</docker.dev-base.name>
         <docker.verbose>true</docker.verbose>
         <docker.prefix>default-docker-virtual</docker.prefix>
         <!-- when docker.save.file is not extracted as a property the version is erroneously labeled as latest -->
