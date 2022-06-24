@@ -2,7 +2,7 @@
     <modelVersion>4.0.0</modelVersion>
     <groupId>com.heekim.dev</groupId>
     <artifactId>parent-pom</artifactId>
-    <version>1.1.0</version>
+    <version>1.1.1</version>
     <packaging>pom</packaging>
 
     <properties>
@@ -226,6 +226,12 @@
                         </configuration>
                     </execution>
                 </executions>
+            </plugin>
+            <plugin>
+                <groupId>com.heekim.dev</groupId>
+                <artifactId>maven-deb-packaging</artifactId>
+                <version>1.0.0</version>
+                <extensions>true</extensions>
             </plugin>
             <plugin>
                 <artifactId>maven-clean-plugin</artifactId>
